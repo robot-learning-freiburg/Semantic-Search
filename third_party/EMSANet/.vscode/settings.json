@@ -1,0 +1,20 @@
+{
+    "python.testing.pytestArgs": [
+        "./emsanet/tests",
+        "-vvs",
+        // "--keep-files",   // enable this to keep the test files (see /tmp/pytest-of-userXY)
+        // "--force-onnx-export",  // enable this to force onnx export
+        // "--show-results",    // enable this to show results
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.linting.pycodestyleEnabled": true,
+    "python.linting.enabled": true,
+    // disable annoying top-level source code modification indication
+    "gitlens.codeLens.authors.enabled": false,
+    "gitlens.codeLens.recentChange.enabled": false,
+    "[markdown]": {
+        "files.trimTrailingWhitespace": false
+    },
+    "cSpell.enabled": true,
+}

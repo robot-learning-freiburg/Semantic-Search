@@ -1,0 +1,24 @@
+# @package _global_
+exp:
+  name: rl_policy
+  env_gpu_pool: [1, 2, 3, 4]
+train:
+  num_envs: 29
+  steps: 5000000
+  ckpt_freq: 200000
+  video_freq: 400000
+ppo:
+  batch_size: 64
+  n_steps: 512
+  learning_rate:
+    initial: 1e-4
+    final: 5e-5
+  policy_kwargs:
+    log_std_init: -0.5
+wandb:
+  notes: "Training objnav with ground truth semantic labels"
+env:
+  label_schema_col: objnav_occ_id
+  num_semantic_classes: 9
+  curriculum:
+    max_aux_prob: 0.95

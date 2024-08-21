@@ -1,0 +1,67 @@
+# @package _global_
+
+defaults:
+  - /habitat: habitat_config_base
+  - /habitat/task: objectnav_v2
+  - /habitat/simulator/agents@habitat.simulator.agents.main_agent: rgbds_agent
+  - /habitat/dataset/objectnav: hm3d_v2
+  - /habitat/task/lab_sensors:
+    - angle_to_nearest_object_waypoint_sensor # training only
+    - agent_position_and_rotation_sensor
+    - camera_position_and_rotation_sensor
+  - /habitat/task/actions:
+      - velocity_stop
+      - velocity_control_fixed
+  - /habitat/task/measurements:
+      - objnav_reward
+  - _self_
+
+habitat:
+  environment:
+    max_episode_seconds: 0
+    max_episode_steps: 1000
+  task:
+    reward_measure: "objnav_reward"
+    measurements:
+      objnav_reward:
+        delta_distance_reward_weight: 1.0
+        collision_penalty: -0.1
+        task_success_reward: 10.0
+        step_penalty: -0.0025
+    actions:
+      velocity_control_fixed:
+        time_step: 1.0 # control duration in seconds
+        lin_vel_range: [0, 0.25] # meters/sec
+        ang_vel_range: [-0.523599, 0.523599] # rad/sec
+  simulator:
+    agents:
+      main_agent:
+        sim_sensors:
+          rgb_sensor: 
+            width: 640 # change resolution
+            height: 480
+            hfov: 59
+            position: [0, 1.096, 0]
+            orientation: [-0.349066, 0, 0] # add pitch
+          depth_sensor:
+            width: 640
+            height: 480
+            hfov: 59
+            min_depth: 0.5
+            max_depth: 5.0
+            position: [0, 1.096, 0]
+            orientation: [-0.349066, 0, 0]
+            normalize_depth: False
+          semantic_sensor:
+            width: 640
+            height: 480
+            hfov: 59
+            position: [0, 1.096, 0]
+            orientation: [-0.349066, 0, 0]
+        height: 1.096
+        radius: 0.17
+        max_climb: 0.1
+        cell_height: 0.05
+    habitat_sim_v0:
+      gpu_device_id: 0
+      allow_sliding: True

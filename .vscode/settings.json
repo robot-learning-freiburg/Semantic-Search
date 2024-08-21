@@ -1,0 +1,17 @@
+{
+    "python.formatting.provider": "none",
+    "python.analysis.extraPaths": [
+        "habitat-lab",
+        "sem_objnav",
+        "./EMSANet/lib/nicr-multitask-scene-analysis",
+        "./EMSANet/"
+    ],
+    "python.testing.pytestArgs": [
+        "habitat-lab"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    },
+}

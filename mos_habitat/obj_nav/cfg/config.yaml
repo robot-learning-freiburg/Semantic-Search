@@ -1,0 +1,77 @@
+defaults:
+  - _self_
+  - experiment: none
+
+exp:
+  seed: 0
+  name: ???
+  data_dir: "../../../../data"
+  env_gpu_pool: [0]
+
+train:
+  steps: 20000000
+  num_envs: 16
+  ckpt_freq: 1000000
+  video_freq: 1000000
+  scenes: [] # if [], num_scenes will be used
+  num_scenes: 145 # if -1, all train scenes will be used
+  max_scene_repeat_episodes: 1 # if -1, all episodes will be used before switching
+  use_aux_angle: 'curriculum' # can be 'gt', 'gt_debug' or 'pred' or 'curriculum'
+  finetune_ckpt: null
+env:
+  mapping:
+    pixel2meter: 0.03
+    aux_num_bins: 12
+    egomap_small_side_m: 3
+    egomap_large_side_m: 15
+    egomap_size: [128, 128]
+  history_length_aux: 0
+  curriculum:
+    success_history_length: 32 # 32 episodes have to be successful
+    success_rate: 0.55 # success rate required to increase the aux prob
+    min_episodes: 25 # min episodes to start curriculum change of aux prob
+    min_episodes_for_change: 5 # min episodes between curriculum changes
+    start_aux_prob: 0.16 # initial aux prob
+    max_aux_prob: 0.72 # max aux prob
+  semantic_model:
+    ckpt: null 
+    config: null
+    use_uncertainty: false
+    prob_aggregate: "dirchlet_addition"
+    model_type: null # emsanet/maskrcnn/oneformer/segformer .If this is given, we will use semantic segmentation model instead of ground truth segmentation
+    temperature: 1.0 # used for segformer and emsanet
+    mode: "semantic" # semantic/panoptic, only used for oneformer and emsanet
+  label_schema_col: objnav_occ_id
+  num_semantic_classes: 9
+  lin_vel_range: [0.0, 0.25]
+  auto_found_action: true
+wandb:
+  project: habitat_mos
+  entity: sai_prasanna
+  mode: online
+  sync_tensorboard: true
+  monitor_gym: true
+  group: ${exp.name}
+  notes: null
+  resume: True
+
+ppo:
+  ent_coef: 0.005
+  batch_size: 128
+  clip_range: 0.1
+  n_epochs: 4
+  n_steps: 512
+  aux_coef: 0.1
+  learning_rate:
+    initial: 3e-4
+    final: 3e-4
+  policy_kwargs:
+    log_std_init: 0.0
+hydra:
+  run:
+    dir: ./exp/${exp.name}/${exp.seed}
+  job:
+    chdir: true
+    env_set:
+      MAGNUM_LOG: quiet
+      HABITAT_SIM_LOG: quiet

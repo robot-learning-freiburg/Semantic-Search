@@ -1,0 +1,24 @@
+channels:
+  - conda-forge
+dependencies:
+  - python ==3.8.* # Habitat supports <3.9
+  - cmake
+  - pybind11
+  - pytorch
+  - pip:
+    - numpy <1.24 # certain deprecated operations were used in other deps
+    - scipy
+    - sophuspy
+    - opencv-python>=3.3.0
+    - pybullet
+    - trimesh
+    - pytest
+    - open3d
+    - scikit-image
+    - scikit-fmm
+    - numpy-quaternion
+    # data tools
+    - yacs
+    - h5py
+    - imageio
+    - pygifsicle
