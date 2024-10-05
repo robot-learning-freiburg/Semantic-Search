@@ -16,7 +16,7 @@ Please cite the paper as follows:
     @article{prasanna2024perception,
       title={Perception Matters: Enhancing Embodied AI with Uncertainty-Aware Semantic Segmentation},
       author={Sai Prasanna and Daniel Honerkamp and Kshitij Sirohi and Tim Welschehold and Wolfram Burgard and Abhinav Valada},
-      journal={arXiv preprint arXiv:2408.02297},
+      journal={Proceedings of the International Symposium on Robotics Research (ISRR)},
       year={2024}
     }
 
