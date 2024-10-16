@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import functools
 import json
 import logging
 import os
@@ -19,13 +18,17 @@ import numpy as np
 import torch as th
 import tqdm
 from gymnasium.wrappers import RecordEpisodeStatistics
-from matplotlib import pyplot as plt
 from omegaconf import OmegaConf
-from sem_objnav.obj_nav.dataset import TRAIN, VAL
-from sem_objnav.obj_nav.env import MappingObjNavEnv
-from sem_objnav.sb3.ppo import PPO_AUX
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import SubprocVecEnv
+
+import sem_objnav
+from sem_objnav.obj_nav.dataset import TRAIN, VAL
+from sem_objnav.obj_nav.env import MappingObjNavEnv
+
+sys.modules["mos_habitat"] = sem_objnav
+
+from sem_objnav.sb3.ppo import PPO_AUX
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,8 @@ def main(args):
         cfg.env.semantic_model.prob_aggregate = args.seg_prob_aggregate
         cfg.env.semantic_model.temperature = args.temperature
         cfg.env.semantic_model.mode = args.mode
+        if args.seg_model_type == "grounded_dino":
+            cfg.env.semantic_model.threshold = args.seg_threshold
 
     split = "val"
     if args.scenes:
@@ -124,8 +129,9 @@ def main(args):
                 env.mapping.entropy_threshold = args.entropy_threshold
             if args.collect_nb_data:
                 env.mapping.collect_nb_data = True
-            if args.record_traj:
-                env.mapping.record_traj = True
+            # visualization
+            # if args.record_traj:
+            #     env.mapping.record_traj = True
             env.mapping.filter_goal_prob = args.filter_goal_prob
             print("setting filter goal prob to", args.filter_goal_prob)
             env.mapping.found_dist_m = args.found_dist_m
@@ -211,41 +217,42 @@ def main(args):
                         str(eval_dir / f"{key}.mp4"), fps=10
                     )
                 video_writers[f"{scene}_{i}"].append_data(frames[i])
-            if "traj" in info[i]:
-                recorded = info[i]["traj"]
-                global_map = recorded["global_map"][..., ::-1]
-                gt_map = recorded["gt_global_map"][..., ::-1]
-                step = recorded["step"]
-                name = f"{recorded['goal_name']}_{info[i]['scene']}_{info[i]['episode_id']}_succ_{info[i]['success']}"
-                cv2.imwrite(str(eval_dir / f"{name}_pred_map.png"), global_map)
-                cv2.imwrite(str(eval_dir / f"{name}_gt_map.png"), gt_map)
-                # Get the pixels that are different betweeen the global map and the ground truth map and color it in yellow and save it as name_diff.png
-                diff = recorded["diff"]
+            # visualization
+            # if "traj" in info[i]:
+            #     recorded = info[i]["traj"]
+            #     global_map = recorded["global_map"][..., ::-1]
+            #     gt_map = recorded["gt_global_map"][..., ::-1]
+            #     step = recorded["step"]
+            #     name = f"{recorded['goal_name']}_{info[i]['scene']}_{info[i]['episode_id']}_succ_{info[i]['success']}"
+            #     cv2.imwrite(str(eval_dir / f"{name}_pred_map.png"), global_map)
+            #     cv2.imwrite(str(eval_dir / f"{name}_gt_map.png"), gt_map)
+            #     # Get the pixels that are different betweeen the global map and the ground truth map and color it in yellow and save it as name_diff.png
+            #     diff = recorded["diff"]
 
-                cv2.imwrite(str(eval_dir / f"{name}_diff.png"), diff[..., ::-1])
+            #     cv2.imwrite(str(eval_dir / f"{name}_diff.png"), diff[..., ::-1])
 
-                # recorded_unc_map = recorded["recorded_unc_map"]
-                # cmap = plt.get_cmap("viridis")
-                # recorded_unc_map[recorded_unc_map < 0] = 0
-                # rgba_img = cmap(recorded_unc_map)
-                # rgb_img = np.delete(rgba_img.squeeze(), 3, 2) * 255
-                # cv2.imwrite(str(eval_dir / f"{name}_unc.png"), rgb_img[..., ::-1])
+            #     # recorded_unc_map = recorded["recorded_unc_map"]
+            #     # cmap = plt.get_cmap("viridis")
+            #     # recorded_unc_map[recorded_unc_map < 0] = 0
+            #     # rgba_img = cmap(recorded_unc_map)
+            #     # rgb_img = np.delete(rgba_img.squeeze(), 3, 2) * 255
+            #     # cv2.imwrite(str(eval_dir / f"{name}_unc.png"), rgb_img[..., ::-1])
 
-                # current_unc_map = recorded["current_unc_map"]
-                # current_unc_map[current_unc_map < 0] = 0
-                # rgba_img = cmap(current_unc_map)
-                # rgb_img = np.delete(rgba_img.squeeze(), 3, 2) * 255
-                # cv2.imwrite(
-                #     str(eval_dir / f"{name}_current_unc.png"), rgb_img[..., ::-1]
-                # )
-                cmap = plt.get_cmap("viridis")
-                current_unc_map_full = recorded["current_unc_map_full"]
-                current_unc_map_full[current_unc_map_full < 0] = 0
-                rgba_img = cmap(current_unc_map_full)
-                rgb_img = np.delete(rgba_img.squeeze(), 3, 2) * 255
-                cv2.imwrite(
-                    str(eval_dir / f"{name}_current_unc_full.png"), rgb_img[..., ::-1]
-                )
+            #     # current_unc_map = recorded["current_unc_map"]
+            #     # current_unc_map[current_unc_map < 0] = 0
+            #     # rgba_img = cmap(current_unc_map)
+            #     # rgb_img = np.delete(rgba_img.squeeze(), 3, 2) * 255
+            #     # cv2.imwrite(
+            #     #     str(eval_dir / f"{name}_current_unc.png"), rgb_img[..., ::-1]
+            #     # )
+            #     cmap = plt.get_cmap("viridis")
+            #     current_unc_map_full = recorded["current_unc_map_full"]
+            #     current_unc_map_full[current_unc_map_full < 0] = 0
+            #     rgba_img = cmap(current_unc_map_full)
+            #     rgb_img = np.delete(rgba_img.squeeze(), 3, 2) * 255
+            #     cv2.imwrite(
+            #         str(eval_dir / f"{name}_current_unc_full.png"), rgb_img[..., ::-1]
+            #     )
 
             if done:
                 success = int(info[i]["success"])
@@ -375,6 +382,8 @@ def build_parser():
     parser.add_argument("--seg_prob_aggregate", type=str, default="argmax")
     parser.add_argument("--filter_goal_prob", type=float, default=None)
     parser.add_argument("--max_episode_steps", type=int, default=-1)
+    # seg_threshold is used only for grounded_dino
+    parser.add_argument("--seg_threshold", type=float, default=0.5)
     parser.add_argument("--mode", type=str, default="semantic")
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--exclude_classes", nargs="+", default=[])
@@ -392,7 +401,7 @@ def build_parser():
     parser.add_argument("--goal_decay", type=float, default=0.9)
     parser.add_argument("--goal_mark", type=float, default=2.0)
     parser.add_argument("--collect_nb_data", action="store_true")
-    parser.add_argument("--record_traj", action="store_true")
+    # parser.add_argument("--record_traj", action="store_true")
 
     return parser
 

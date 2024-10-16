@@ -99,49 +99,40 @@ class SemanticMapper:
         self.prev_pos_px = None
         self.aux_bin_px = int(aux_bin_m / pixel2meter)
         # Color pallete, it's bit convoluted, but it's to make sure that the colors are unique
-        # self.color_pallete = get_colormap(num_semantic_classes + 3)
-        # self.color_pallete = np.array(
-        #     [
-        #         [255, 245, 240] # unexplored
-        #         [128, 64, 128], # unoccupied
-        #         [244, 35, 232],  # occupied
-        #         [70, 70, 70],  # chair
-        #         [102, 102, 156],  # bed
-        #         [190, 153, 153],  # plant
-        #         [153, 153, 153],  # tv_monitor
-        #         [250, 170, 30],  # toilet
-        #         [220, 220, 0],  # sofa
-        #         [255, 0, 0],  # goal
-        #         [100, 251, 100],  # path
-        #         [70, 130, 180],  # arrow
-        #     ],
-        #     dtype=np.uint8,
-        # )
-        self.color_pallete = np.array(
-            [
-                [255, 255, 255],  # unoccupied
-                [230, 230, 230],  # unexplored
-                [159, 159, 159],  # occupied
-                [235, 189, 157],  # chair
-                [234, 217, 156],  # bed
-                [219, 235, 156],  # plant
-                [189, 235, 156],  # tv_monitor
-                [161, 236, 146],  # toilet
-                [159, 229, 182],  # sofa
-                [0, 255, 0],  # goal
-                [0, 0, 255],  # path
-                [70, 130, 180],  # arrow
-            ],
-            dtype=np.uint8,
-        )
+        self.color_pallete = get_colormap(num_semantic_classes + 3)
         self.active_goal_color = self.color_pallete[num_semantic_classes]
-        # self.path_color = np.array([128, 0, 128], dtype=np.uint8)
-        # self.color_pallete[num_semantic_classes + 1] = self.path_color
-        self.path_color = self.color_pallete[num_semantic_classes + 1]
+        self.path_color = np.array([128, 0, 128], dtype=np.uint8)
+        self.color_pallete[num_semantic_classes + 1] = self.path_color
         self.arrow_color = tuple(
             int(c) for c in self.color_pallete[num_semantic_classes + 2]
         )
         self.aux_pred_color = np.array([255, 255, 255], dtype=np.uint8)
+        # uncomment for pretty pictures for the paper
+        # self.color_pallete = np.array(
+        #     [
+        #         [255, 255, 255],  # unoccupied
+        #         [230, 230, 230],  # unexplored
+        #         [159, 159, 159],  # occupied
+        #         [235, 189, 157],  # chair
+        #         [234, 217, 156],  # bed
+        #         [219, 235, 156],  # plant
+        #         [189, 235, 156],  # tv_monitor
+        #         [161, 236, 146],  # toilet
+        #         [159, 229, 182],  # sofa
+        #         [0, 255, 0],  # goal
+        #         [0, 0, 255],  # path
+        #         [70, 130, 180],  # arrow
+        #     ],
+        #     dtype=np.uint8,
+        # )
+        # self.active_goal_color = self.color_pallete[num_semantic_classes]
+        # # self.path_color = np.array([128, 0, 128], dtype=np.uint8)
+        # # self.color_pallete[num_semantic_classes + 1] = self.path_color
+        # self.path_color = self.color_pallete[num_semantic_classes + 1]
+        # self.arrow_color = tuple(
+        #     int(c) for c in self.color_pallete[num_semantic_classes + 2]
+        # )
+        # self.aux_pred_color = np.array([255, 255, 255], dtype=np.uint8)
 
         self.path_id = num_semantic_classes + 1
         self.height_cutoff_m = height_cutoff_m
@@ -187,7 +178,8 @@ class SemanticMapper:
         self.sem_model_n_classes = seg_model_n_classes
         self.filter_goal_prob = filter_goal_prob
         self.collect_nb_data = collect_nb_data
-        self.record_traj = False
+        # Visualization code
+        # self.record_traj = False
 
         if self.prob_aggregate in ["height_map_stubborn", "stubborn"]:
             with open(
@@ -263,18 +255,18 @@ class SemanticMapper:
             self.unc_map = np.ones((grid_rows, grid_cols, 1), dtype=np.float32) * -0.5
         else:
             self.gt_map = self.semantic_map
-            self.gt_map_color = self.semantic_map_color
+            # visualization code
+            # self.gt_map_color = self.semantic_map_color
         if self.collect_nb_data:
             self.total_view = np.zeros((grid_rows, grid_cols), dtype=np.uint32)
             self.cumulative_conf = np.zeros((grid_rows, grid_cols), dtype=np.float32)
             self.max_conf = np.zeros((grid_rows, grid_cols), dtype=np.float32)
             self.max_other_conf = np.zeros((grid_rows, grid_cols), dtype=np.float32)
             self.eps_nb_data = {"goal": [], "non_goal": [], "goal_id": None}
+
         self.path_mask = np.zeros((grid_rows, grid_cols), dtype=np.uint8)
         self.prev_pos_px = None
         self.found_idx = None
-        self._found_decision_idx = None
-        self._mask_around_robot = None
 
     def pol2cart(self, rho, phi):
         x = rho * np.cos(phi)
@@ -319,6 +311,7 @@ class SemanticMapper:
         point_cloud_world_flat = camera_rotated + camera_position
         task_goal_ids = obs["objectgoal"]
         goal_id = self.goal2sem_id[task_goal_ids][0]
+
         bounds = self.map_bounds
         lower_bound_m = bounds[:3]
         point_cloud_map_flat = self.world2map(point_cloud_world_flat, lower_bound_m)
@@ -365,22 +358,9 @@ class SemanticMapper:
                     updated_agg_seg_ids[occupied_mask] = 2
                     updated_agg_seg_ids[unoccupied_mask] = 1
         else:
-            updated_agg_gt_seg_ids = obs["semantic_gt"].reshape(-1)[valid_flat_idx]
-            if "height_map" in self.prob_aggregate and self.record_traj:
-                heights = self.height_map[update_cell_idx]
-                update_height_map_mask = (
-                    (updated_agg_gt_seg_ids == 0)
-                    | (updated_agg_gt_seg_ids == 1)
-                    | (updated_agg_gt_seg_ids == 2)
-                )
-                occupied_mask = (heights > 0.1) & update_height_map_mask
-                unoccupied_mask = (heights != -np.inf) * (
-                    heights < 0.1
-                ) & update_height_map_mask
-                if self.num_semantic_classes == 3 + 6:
-                    updated_agg_gt_seg_ids[occupied_mask] = 2
-                    updated_agg_gt_seg_ids[unoccupied_mask] = 1
-            self.gt_map[update_cell_idx] = updated_agg_gt_seg_ids
+            self.gt_map[update_cell_idx] = obs["semantic_gt"].reshape(-1)[
+                valid_flat_idx
+            ]
             if (
                 self.prob_aggregate == "goal_decay"
                 or self.prob_aggregate == "height_map_goal_decay"
@@ -517,6 +497,7 @@ class SemanticMapper:
                                     axis=-1,
                                 )
                             )
+                        self.eps_nb_data["goal_id"] = goal_id
                     else:
                         features = np.stack(
                             [
@@ -760,7 +741,6 @@ class SemanticMapper:
             1,
             -1,
         ).astype(bool)
-        self._mask_around_robot = mask_around_robot
 
         # TODO: found obj logic
         is_found = None
@@ -795,10 +775,11 @@ class SemanticMapper:
                     if np.any(goal_mask):
                         is_found = True
                         self.found_idx = mask_around_robot_idx
-                        self._found_decision_idx = (
-                            mask_around_robot_idx[0][goal_mask],
-                            mask_around_robot_idx[1][goal_mask],
-                        )
+                        # visualization code
+                        # self._found_decision_idx = (
+                        #     mask_around_robot_idx[0][goal_mask],
+                        #     mask_around_robot_idx[1][goal_mask],
+                        # )
         elif "avg_prob" in self.prob_aggregate:
             seg_n_classes = self.avg_prob_seg_map.shape[-1]
             mask_around_robot_idx = tuple(np.argwhere(mask_around_robot).T)
@@ -812,10 +793,11 @@ class SemanticMapper:
             if np.any(entropy_mask):
                 is_found = True
                 self.found_idx = mask_around_robot_idx
-                self._found_decision_idx = (
-                    mask_around_robot_idx[0][goal_mask][entropy_mask],
-                    mask_around_robot_idx[1][goal_mask][entropy_mask],
-                )
+                # visualization code
+                # self._found_decision_idx = (
+                #     mask_around_robot_idx[0][goal_mask][entropy_mask],
+                #     mask_around_robot_idx[1][goal_mask][entropy_mask],
+                # )
         elif "log_odds" in self.prob_aggregate:
             seg_n_classes = self.log_odds_seg_map.shape[-1]
             mask_around_robot_idx = tuple(np.argwhere(mask_around_robot).T)
@@ -828,24 +810,15 @@ class SemanticMapper:
                 axis=-1,
                 base=seg_n_classes,
             )
-            entropy_mask = entropy < self.entropy_threshold
             if np.any(entropy < self.entropy_threshold):
                 is_found = True
                 self.found_idx = mask_around_robot_idx
-                self._found_decision_idx = (
-                    mask_around_robot_idx[0][goal_mask][entropy_mask],
-                    mask_around_robot_idx[1][goal_mask][entropy_mask],
-                )
         else:
             mask_around_robot_idx = tuple(np.argwhere(mask_around_robot).T)
             goal_mask = self.semantic_map[mask_around_robot_idx] == goal_id
             if np.any(goal_mask):
                 is_found = True
                 self.found_idx = mask_around_robot_idx
-                self._found_decision_idx = (
-                    mask_around_robot_idx[0][goal_mask],
-                    mask_around_robot_idx[1][goal_mask],
-                )
         if self.prev_pos_px is not None:
             self.path_mask = cv2.line(
                 self.path_mask,
@@ -858,7 +831,9 @@ class SemanticMapper:
             path_mask = self.path_mask.astype(np.bool)
             self.semantic_map[path_mask] = self.path_id
             self.semantic_map_color[path_mask] = self.path_color
-            self.gt_map[path_mask] = self.path_id
+            # visualization code
+            # self.gt_map[path_mask] = self.path_id
+            # self.gt_map_color[path_mask] = self.path_color
         # Plotting agent path
 
         self.prev_pos_px = robot_pos_px

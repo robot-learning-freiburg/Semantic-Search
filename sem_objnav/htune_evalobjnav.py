@@ -3,6 +3,7 @@ import sys
 from functools import partial
 
 import optuna
+
 from sem_objnav.eval_objnav import build_parser, main
 
 _model_args = {
@@ -18,6 +19,10 @@ _model_args = {
         "3.2",
     ],
     "maskrcnn": ["--seg_model_type", "maskrcnn"],
+    "grounded_dino": [
+        "--seg_model_type",
+        "grounded_dino",
+    ],
 }
 
 
@@ -54,6 +59,43 @@ def hv_objective(trial: optuna.Trial, model: str = "segformer"):
             str(hv_view_dist),
             "--seg_prob_aggregate",
             "height_map_hv",
+        ]
+        + _model_args[model]
+    )
+    metrics = main(args)
+    return -metrics["success"]
+
+
+def argmax_objective(trial: optuna.Trial, model="grounded_dino"):
+    assert model == "grounded_dino"
+    seg_threshold = trial.suggest_float("seg_threshold", 0.2, 1.0)
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "--exclude_classes",
+            "plant",
+            "--out_prefix",
+            f"htune_{trial.number}",
+            "--env_gpus",
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "--checkpoint",
+            "exp/sp_policy",
+            "--sp_policy",
+            "--episodes",
+            "1",
+            "--num_workers",
+            "6",
+            "--limit_scenes",
+            "30",
+            "--seg_threshold",
+            str(seg_threshold),
+            "--seg_prob_aggregate",
+            "height_map_argmax",
         ]
         + _model_args[model]
     )
@@ -311,6 +353,7 @@ if __name__ == "__main__":
         "log_odds_objective",
         "avg_prob_without_temp_objective",
         "w2_avg_prob_without_temp_objective",
+        "argmax_objective",
     ][obj_to_select]
     objective_fn = {
         "hv_objective": hv_objective,
@@ -318,6 +361,7 @@ if __name__ == "__main__":
         "filter_goal_prob_objective": filter_goal_prob_objective,
         "goal_decay_objective": goal_decay_objective,
         "avg_prob_objective": avg_prob_objective,
+        "argmax_objective": argmax_objective,
         "goal_decay_with_filter_objective": goal_decay_with_filter_objective,
         "w_avg_prob_objective": partial(
             avg_prob_objective, agg_type="height_map_w_avg_prob"

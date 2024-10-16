@@ -24,9 +24,11 @@ from matplotlib import pyplot as plt
 from PIL import Image
 from scipy.special import softmax
 from scipy.stats import circvar
+
 from sem_objnav.obj_nav.mapper import SemanticMapper
 from sem_objnav.segment.infer import (
     EmsanetWrapper,
+    GroundedDinoWrapper,
     MaskRCNNWrapper,
     OneformerWrapper,
     SegformerWrapper,
@@ -150,6 +152,10 @@ class MappingObjNavEnv(gym.Env):
                 )
             elif config.semantic_model.model_type == "maskrcnn":
                 self.segmentation_model = MaskRCNNWrapper(
+                    config.label_schema_col, f"cuda:{gpu_device_id}"
+                )
+            elif config.semantic_model.model_type == "grounded_dino":
+                self.segmentation_model = GroundedDinoWrapper(
                     config.label_schema_col, f"cuda:{gpu_device_id}"
                 )
             else:
@@ -480,9 +486,10 @@ class MappingObjNavEnv(gym.Env):
         self._cached_render_data["semantic"] = obs["semantic"]
         self._cached_render_data["rgb"] = obs["rgb"]
         self._cached_render_data["depth"] = obs["depth"]
-        if self.mapping.record_traj:
-            self.recorded_unc_map = None
-            self.found_idxes = []
+        # Visualization code used for paper
+        # if self.mapping.record_traj:
+        #     self.recorded_unc_map = None
+        #     self.found_idxes = []
         return obs
 
     def step(self, action):
@@ -568,7 +575,8 @@ class MappingObjNavEnv(gym.Env):
             self._is_found = False
             task_goal_ids = obs["objectgoal"]
             goal_id = self.mapping.goal2sem_id[task_goal_ids][0]
-            fp_found = False
+            # Visualization code
+            # fp_found = False
             if true_found_decision:
                 lower_bound_m = self.mapping.map_bounds[:3]
                 robot_pos_px = self.mapping.world2map(agent_pos, lower_bound_m)
@@ -584,7 +592,8 @@ class MappingObjNavEnv(gym.Env):
                 ).astype(bool)
                 if not np.any(self.mapping.gt_map[mask_around_robot] == goal_id):
                     self._sp_fp_found = True
-                    fp_found = True
+                    # visualization code
+                    # fp_found = True
 
             if distance_to_vp < success_distance:
                 self._sp_fn_found = (
@@ -623,87 +632,88 @@ class MappingObjNavEnv(gym.Env):
             "episode_id": self._env.habitat_env.current_episode.episode_id,
         }
 
-        if self.mapping.record_traj and true_found_decision and done:
-            if self.recorded_unc_map is None:
-                self.recorded_unc_map = np.zeros_like(self.mapping.unc_map)
-            # Hacky code to get the trajectory visualization
-            goal_sem_id = self.mapping.goal2sem_id[obs["objectgoal"]][0]
-            goal_name = ["chair", "bed", "plant", "toilet", "tv", "sofa"][
-                obs["objectgoal"][0]
-            ]
-            global_map = self.mapping.semantic_map_color.copy()
-            global_map[self.mapping.semantic_map == goal_sem_id] = [0, 255, 0]
-            global_map[self.mapping.semantic_map == 0] = [255, 255, 255]
-            found_idx = self.mapping._found_decision_idx
+        # visualization code
+        # if self.mapping.record_traj and true_found_decision and done:
+        #     if self.recorded_unc_map is None:
+        #         self.recorded_unc_map = np.zeros_like(self.mapping.unc_map)
+        #     # Hacky code to get the trajectory visualization
+        #     goal_sem_id = self.mapping.goal2sem_id[obs["objectgoal"]][0]
+        #     goal_name = ["chair", "bed", "plant", "toilet", "tv", "sofa"][
+        #         obs["objectgoal"][0]
+        #     ]
+        #     global_map = self.mapping.semantic_map_color.copy()
+        #     global_map[self.mapping.semantic_map == goal_sem_id] = [0, 255, 0]
+        #     global_map[self.mapping.semantic_map == 0] = [255, 255, 255]
+        #     found_idx = self.mapping._found_decision_idx
 
-            gt_global_map = self.mapping.color_pallete[self.mapping.gt_map]
-            gt_global_map[self.mapping.gt_map == goal_sem_id] = [0, 255, 0]
-            gt_global_map[self.mapping.gt_map == 0] = [255, 255, 255]
+        #     gt_global_map = self.mapping.color_pallete[self.mapping.gt_map]
+        #     gt_global_map[self.mapping.gt_map == goal_sem_id] = [0, 255, 0]
+        #     gt_global_map[self.mapping.gt_map == 0] = [255, 255, 255]
 
-            diff = cv2.absdiff(global_map, gt_global_map)
-            diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-            _, diff = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY)
-            # make the diff such hat differences are in red and the background is in cream
-            diff = cv2.cvtColor(diff, cv2.COLOR_GRAY2BGR)
-            diff[diff[..., 0] == 255] = [255, 0, 0]
-            diff[diff[..., 0] == 0] = [255, 255, 255]
+        #     diff = cv2.absdiff(global_map, gt_global_map)
+        #     diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+        #     _, diff = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY)
+        #     # make the diff such hat differences are in red and the background is in cream
+        #     diff = cv2.cvtColor(diff, cv2.COLOR_GRAY2BGR)
+        #     diff[diff[..., 0] == 255] = [255, 0, 0]
+        #     diff[diff[..., 0] == 0] = [255, 255, 255]
 
-            new_unc_map = np.zeros_like(self.mapping.unc_map)
+        #     new_unc_map = np.zeros_like(self.mapping.unc_map)
 
-            new_unc_map[self.mapping.semantic_map == goal_sem_id] = (
-                self.mapping.unc_map[self.mapping.semantic_map == goal_sem_id]
-            )
-            if found_idx is not None:
-                new_unc_map[found_idx[0], found_idx[1]] = self.mapping.unc_map[
-                    found_idx[0], found_idx[1]
-                ]
+        #     new_unc_map[self.mapping.semantic_map == goal_sem_id] = (
+        #         self.mapping.unc_map[self.mapping.semantic_map == goal_sem_id]
+        #     )
+        #     if found_idx is not None:
+        #         new_unc_map[found_idx[0], found_idx[1]] = self.mapping.unc_map[
+        #             found_idx[0], found_idx[1]
+        #         ]
 
-                self.recorded_unc_map[found_idx[0], found_idx[1]] = (
-                    self.mapping.unc_map[found_idx[0], found_idx[1]]
-                )
-                # if self._sp_fp_found:
-                #     self.found_idxes.append(found_idx)
-                #     for f_idx in self.found_idxes:
-                #         min_x = min(f_idx[0])
-                #         max_x = max(f_idx[0])
-                #         min_y = min(f_idx[1])
-                #         max_y = max(f_idx[1])
-                #         # draw a rectangle around the found object using cv2
-                #         global_map = cv2.rectangle(
-                #             global_map,
-                #             (min_y, min_x),
-                #             (max_y, max_x),
-                #             (0, 0, 255),
-                #             2,
-                #         )
-                # else:
-                #     # global_map[found_idx[0], found_idx[1]] = [102, 255, 102]
-                #     min_x = min(found_idx[0])
-                #     max_x = max(found_idx[0])
-                #     min_y = min(found_idx[1])
-                #     max_y = max(found_idx[1])
-                #     # draw a rectangle around the found object using cv2
-                #     global_map = cv2.rectangle(
-                #         global_map, (min_y, min_x), (max_y, max_x), (102, 255, 102), 2
-                #     )
+        #         self.recorded_unc_map[found_idx[0], found_idx[1]] = (
+        #             self.mapping.unc_map[found_idx[0], found_idx[1]]
+        #         )
+        #         # if self._sp_fp_found:
+        #         #     self.found_idxes.append(found_idx)
+        #         #     for f_idx in self.found_idxes:
+        #         #         min_x = min(f_idx[0])
+        #         #         max_x = max(f_idx[0])
+        #         #         min_y = min(f_idx[1])
+        #         #         max_y = max(f_idx[1])
+        #         #         # draw a rectangle around the found object using cv2
+        #         #         global_map = cv2.rectangle(
+        #         #             global_map,
+        #         #             (min_y, min_x),
+        #         #             (max_y, max_x),
+        #         #             (0, 0, 255),
+        #         #             2,
+        #         #         )
+        #         # else:
+        #         #     # global_map[found_idx[0], found_idx[1]] = [102, 255, 102]
+        #         #     min_x = min(found_idx[0])
+        #         #     max_x = max(found_idx[0])
+        #         #     min_y = min(found_idx[1])
+        #         #     max_y = max(found_idx[1])
+        #         #     # draw a rectangle around the found object using cv2
+        #         #     global_map = cv2.rectangle(
+        #         #         global_map, (min_y, min_x), (max_y, max_x), (102, 255, 102), 2
+        #         #     )
 
-            # gt_global_map[
-            #     self.mapping._mask_around_robot & (self.mapping.gt_map == goal_sem_id)
-            # ] = [204, 255, 153]
-            goal_sem_id = self.mapping.goal2sem_id[obs["objectgoal"]][0]
-            goal_name = ["chair", "bed", "plant", "toilet", "tv", "sofa"][
-                obs["objectgoal"][0]
-            ]
-            info["traj"] = {
-                "goal_name": goal_name,
-                "global_map": global_map,
-                "gt_global_map": gt_global_map,
-                "step": self.current_step,
-                "recorded_unc_map": self.recorded_unc_map,
-                "current_unc_map": new_unc_map,
-                "current_unc_map_full": self.mapping.unc_map,
-                "diff": diff,
-            }
+        #     # gt_global_map[
+        #     #     self.mapping._mask_around_robot & (self.mapping.gt_map == goal_sem_id)
+        #     # ] = [204, 255, 153]
+        #     goal_sem_id = self.mapping.goal2sem_id[obs["objectgoal"]][0]
+        #     goal_name = ["chair", "bed", "plant", "toilet", "tv", "sofa"][
+        #         obs["objectgoal"][0]
+        #     ]
+        #     info["traj"] = {
+        #         "goal_name": goal_name,
+        #         "global_map": global_map,
+        #         "gt_global_map": gt_global_map,
+        #         "step": self.current_step,
+        #         "recorded_unc_map": self.recorded_unc_map,
+        #         "current_unc_map": new_unc_map,
+        #         "current_unc_map_full": self.mapping.unc_map,
+        #         "diff": diff,
+        #     }
 
         if done:
             info["fp_detections"], info["fn_detections"], self.is_fn_bbox = (
@@ -722,33 +732,6 @@ class MappingObjNavEnv(gym.Env):
                 else (not info["success"] and self.current_step < 1000)
             )
             info["success"] = not info["fn_found"] and not info["fp_found"]
-            # if self.mapping.record_traj:
-            #     # Hacky code to get the trajectory visualization
-            #     goal_sem_id = self.mapping.goal2sem_id[obs["objectgoal"]][0]
-            #     goal_name = ["chair", "bed", "plant", "toilet", "tv", "sofa"][
-            #         obs["objectgoal"][0]
-            #     ]
-            #     global_map = self.mapping.semantic_map_color.copy()
-            #     global_map[self.mapping.semantic_map == goal_sem_id] = [255, 0, 0]
-            #     global_map[self.mapping.semantic_map == 0] = [255, 255, 255]
-            #     found_idx = self.mapping._found_decision_idx
-
-            #     gt_global_map = self.mapping.color_pallete[self.mapping.gt_map]
-            #     gt_global_map[self.mapping.gt_map == goal_sem_id] = [255, 0, 0]
-            #     gt_global_map[self.mapping.gt_map == 0] = [255, 255, 255]
-
-            #     if found_idx is not None:
-            #         global_map[found_idx[0], found_idx[1]] = [0, 255, 255]
-            #     gt_global_map[
-            #         self.mapping._mask_around_robot
-            #         & (self.mapping.gt_map == goal_sem_id)
-            #     ] = [0, 255, 255]
-
-            #     info["traj"] = {
-            #         "goal_name": goal_name,
-            #         "global_map": global_map,
-            #         "gt_global_map": gt_global_map,
-            #     }
             if self.mapping.collect_nb_data:
                 info["nb_data"] = {
                     "goal": (

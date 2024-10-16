@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
 
+import cv2
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,20 +16,20 @@ from emsanet.data import get_datahelper
 from emsanet.model import EMSANet
 from emsanet.preprocessing import get_preprocessor
 from emsanet.weights import load_weights
-from nicr_scene_analysis_datasets.datasets.sunrgbd.dataset import SUNRGBD
-from torch.distributions import Categorical
+from PIL import Image
 from torchvision.models.detection import (
     MaskRCNN_ResNet50_FPN_Weights,
     maskrcnn_resnet50_fpn,
 )
 from transformers import (
+    AutoModelForMaskGeneration,
+    AutoProcessor,
     OneFormerForUniversalSegmentation,
     OneFormerProcessor,
     SegformerFeatureExtractor,
     SegformerForSemanticSegmentation,
+    pipeline,
 )
-
-from sem_objnav.segment.hm3d.dataset import Hm3d
 
 logger = logging.getLogger(__name__)
 
@@ -336,3 +339,180 @@ class SegformerWrapper:
             for key, value in self.pred2objnav_occ_id.items():
                 seg_pred[seg == key] = value
         return seg_pred
+
+
+class GroundedDinoWrapper:
+    """
+    GroundedDinoWrapper is a wrapper for the GroundedDino model.
+    Inspired from: https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Grounding%20DINO/GroundingDINO_with_Segment_Anything.ipynb
+    """
+
+    def __init__(
+        self,
+        map_schema: str,
+        device: str = "cuda:0",
+    ) -> None:
+        self.map_schema = map_schema
+        self.labels = [
+            # "a floor.",
+            # "a wall.",
+            "a chair.",
+            "a bed.",
+            "a plant.",
+            "a toilet.",
+            "a TV.",
+            "a sofa.",
+        ]
+        assert map_schema == "objnav_occ_id", "map_schema must be 'objnav_occ_id'"
+        self.object_detector = pipeline(
+            model="IDEA-Research/grounding-dino-tiny",
+            task="zero-shot-object-detection",
+            device=device,
+        )
+        segmentor_id = "facebook/sam-vit-base"
+        self.segmentator = (
+            AutoModelForMaskGeneration.from_pretrained(segmentor_id).to(device).eval()
+        )
+        self.processor = AutoProcessor.from_pretrained(segmentor_id)
+        self.device = device
+        self.num_model_classes = None
+        self.objnav2pred = None
+        self.threshold = 0.9
+
+    def predict(self, rgb: np.ndarray, depth: np.ndarray):
+        # convert rgb to PIL image
+        rgb = Image.fromarray(rgb)
+        pred_seg = np.zeros_like(depth)
+        with torch.no_grad():
+            results = self.object_detector(
+                rgb, candidate_labels=self.labels, threshold=self.threshold
+            )
+            detection_results = [
+                DetectionResult.from_dict(result) for result in results
+            ]
+            boxes = get_boxes(detection_results)
+            if len(boxes[0]) > 0:
+                inputs = self.processor(
+                    images=rgb, input_boxes=boxes, return_tensors="pt"
+                ).to(self.device)
+                outputs = self.segmentator(**inputs)
+                masks = self.processor.post_process_masks(
+                    masks=outputs.pred_masks,
+                    original_sizes=inputs.original_sizes,
+                    reshaped_input_sizes=inputs.reshaped_input_sizes,
+                )[0]
+                masks = refine_masks(masks, polygon_refinement=False)
+                for detection_result, mask in zip(detection_results, masks):
+                    label_idx = self.labels.index(detection_result.label)
+                    print(detection_result.label)
+                    # if label_idx < 2:
+                    #     continue
+                    if self.map_schema == "objnav_occ_id":
+                        label_idx += 3
+                    pred_seg[mask > 0] = label_idx
+
+        return {"semantic": pred_seg.astype(np.int32)}
+
+    def map_seg_to_schema(self, seg):
+        raise NotImplementedError
+
+
+@dataclass
+class BoundingBox:
+    xmin: int
+    ymin: int
+    xmax: int
+    ymax: int
+
+    @property
+    def xyxy(self) -> List[float]:
+        return [self.xmin, self.ymin, self.xmax, self.ymax]
+
+
+@dataclass
+class DetectionResult:
+    score: float
+    label: str
+    box: BoundingBox
+    mask: Optional[np.array] = None
+
+    @classmethod
+    def from_dict(cls, detection_dict: Dict) -> "DetectionResult":
+        return cls(
+            score=detection_dict["score"],
+            label=detection_dict["label"],
+            box=BoundingBox(
+                xmin=detection_dict["box"]["xmin"],
+                ymin=detection_dict["box"]["ymin"],
+                xmax=detection_dict["box"]["xmax"],
+                ymax=detection_dict["box"]["ymax"],
+            ),
+        )
+
+
+def get_boxes(results: DetectionResult) -> List[List[List[float]]]:
+    boxes = []
+    for result in results:
+        xyxy = result.box.xyxy
+        boxes.append(xyxy)
+
+    return [boxes]
+
+
+def mask_to_polygon(mask: np.ndarray) -> List[List[int]]:
+    # Find contours in the binary mask
+    contours, _ = cv2.findContours(
+        mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    # Find the contour with the largest area
+    largest_contour = max(contours, key=cv2.contourArea)
+
+    # Extract the vertices of the contour
+    polygon = largest_contour.reshape(-1, 2).tolist()
+
+    return polygon
+
+
+def polygon_to_mask(
+    polygon: List[Tuple[int, int]], image_shape: Tuple[int, int]
+) -> np.ndarray:
+    """
+    Convert a polygon to a segmentation mask.
+
+    Args:
+    - polygon (list): List of (x, y) coordinates representing the vertices of the polygon.
+    - image_shape (tuple): Shape of the image (height, width) for the mask.
+
+    Returns:
+    - np.ndarray: Segmentation mask with the polygon filled.
+    """
+    # Create an empty mask
+    mask = np.zeros(image_shape, dtype=np.uint8)
+
+    # Convert polygon to an array of points
+    pts = np.array(polygon, dtype=np.int32)
+
+    # Fill the polygon with white color (255)
+    cv2.fillPoly(mask, [pts], color=(255,))
+
+    return mask
+
+
+def refine_masks(
+    masks: torch.BoolTensor, polygon_refinement: bool = False
+) -> List[np.ndarray]:
+    masks = masks.cpu().float()
+    masks = masks.permute(0, 2, 3, 1)
+    masks = masks.mean(axis=-1)
+    masks = (masks > 0).int()
+    masks = masks.numpy().astype(np.uint8)
+    masks = list(masks)
+
+    if polygon_refinement:
+        for idx, mask in enumerate(masks):
+            shape = mask.shape
+            polygon = mask_to_polygon(mask)
+            mask = polygon_to_mask(polygon, shape)
+            masks[idx] = mask
+    return masks
